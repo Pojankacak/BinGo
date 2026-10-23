@@ -336,13 +336,20 @@ class _BinGoDemoState extends State<BinGoDemo> {
             Text('${j.kg.toStringAsFixed(1)} kg')]),
           const SizedBox(height: 8), Text(j.address),
           const SizedBox(height: 13),
-          LinearProgressIndicator(value: (j.stage.index + 1) / JobStage.values.length,
-            minHeight: 9, borderRadius: BorderRadius.circular(8), backgroundColor: pale),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: (j.stage.index + 1) / JobStage.values.length),
+            duration: const Duration(milliseconds: 650),
+            curve: Curves.easeInOutCubic,
+            builder: (context, progress, _) => LinearProgressIndicator(
+              value: progress, minHeight: 9, borderRadius: BorderRadius.circular(8),
+              backgroundColor: pale)),
           const SizedBox(height: 9),
           Text(stageText(j.stage), style: const TextStyle(color: green,
             fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           routeVisual(j),
+          const SizedBox(height: 12),
+          AnimatedTrackingTimeline(key: ValueKey('timeline-${j.id}'), stage: j.stage, type: j.type),
           const SizedBox(height: 8),
           Text('Destination: ${j.type.destination}',
             style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -352,29 +359,9 @@ class _BinGoDemoState extends State<BinGoDemo> {
         ]))),
   ]);
 
-  Widget routeVisual(CollectionJob j) => Container(padding: const EdgeInsets.all(15),
-    decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(14)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('SIMULATED TOWNSHIP ROUTE', style: TextStyle(color: deep,
-        fontWeight: FontWeight.w800, fontSize: 11)),
-      const SizedBox(height: 13),
-      Row(children: [
-        routeStop(Icons.warehouse_outlined, 'Base', true),
-        const Expanded(child: Divider(color: green, thickness: 2)),
-        routeStop(Icons.home_outlined, 'House', j.stage.index >= 2),
-        const Expanded(child: Divider(color: green, thickness: 2)),
-        routeStop(j.type.icon, 'Hub', j.stage.index >= 4),
-      ]),
-      const SizedBox(height: 8),
-      const Text('Illustrative route only • No live GPS / ETA',
-        style: TextStyle(fontSize: 10, color: Colors.black54)),
-    ]));
-
-  Widget routeStop(IconData icon, String text, bool active) => Column(children: [
-    CircleAvatar(radius: 19, backgroundColor: active ? green : Colors.white,
-      child: Icon(icon, size: 18, color: active ? Colors.white : deep)),
-    const SizedBox(height: 5), Text(text, style: const TextStyle(fontSize: 11)),
-  ]);
+  Widget routeVisual(CollectionJob j) => AnimatedAutobinRoute(
+    key: ValueKey('route-${j.id}'), stage: j.stage, wasteType: j.type,
+  );
 
   Widget autobinPage() {
     final j = current;
@@ -394,14 +381,11 @@ class _BinGoDemoState extends State<BinGoDemo> {
           const Text('GPS + LiDAR navigation • future hardware integration',
             textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
           const SizedBox(height: 13),
-         Row(
-  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-  children: [
-    const RobotMetric('Battery', '85%', Icons.battery_5_bar),
-    const RobotMetric('Navigation', 'Demo', Icons.route_outlined),
-    const RobotMetric('Mode', 'Simulated', Icons.settings_remote_outlined),
-  ],
-),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            const RobotMetric('Battery', '85%', Icons.battery_5_bar),
+            const RobotMetric('Navigation', 'Demo', Icons.route_outlined),
+            const RobotMetric('Mode', 'Simulated', Icons.settings_remote_outlined),
+          ]),
         ])),
       const SizedBox(height: 17),
       heading('Three waste streams'),
@@ -593,4 +577,163 @@ class RobotMetric extends StatelessWidget {
     Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
     Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10)),
   ]);
+}
+
+
+// Visual simulation only: animations reflect stage changes triggered by demo buttons.
+// There is no GPS connection or continuously updating physical robot position.
+class AnimatedAutobinRoute extends StatefulWidget {
+  const AnimatedAutobinRoute({super.key, required this.stage, required this.wasteType});
+  final JobStage stage;
+  final WasteType wasteType;
+
+  @override
+  State<AnimatedAutobinRoute> createState() => _AnimatedAutobinRouteState();
+}
+
+class _AnimatedAutobinRouteState extends State<AnimatedAutobinRoute>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController pulse = AnimationController(
+    vsync: this, duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() { pulse.dispose(); super.dispose(); }
+
+  double get distance {
+    switch (widget.stage) {
+      case JobStage.requested: return 0;
+      case JobStage.dispatched: return .28;
+      case JobStage.arrived: return .50;
+      case JobStage.collected: return .64;
+      case JobStage.atHub: return .94;
+      case JobStage.completed: return 1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(16)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('AUTOBIN JOURNEY • SIMULATION', style: TextStyle(
+        color: deep, fontSize: 11, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      Text(stageText(widget.stage), style: const TextStyle(
+        fontSize: 13, fontWeight: FontWeight.w700, color: green)),
+      const SizedBox(height: 19),
+      LayoutBuilder(builder: (context, bounds) {
+        final trackWidth = (bounds.maxWidth - 44).clamp(0.0, double.infinity).toDouble();
+        return SizedBox(height: 57, child: Stack(clipBehavior: Clip.none, children: [
+          Positioned(left: 22, right: 22, top: 19,
+            child: Container(height: 5, decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(8)))),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: distance),
+            duration: const Duration(milliseconds: 950),
+            curve: Curves.easeInOutCubic,
+            builder: (context, progress, child) => Stack(children: [
+              Positioned(left: 22, top: 19,
+                child: Container(width: trackWidth * progress, height: 5,
+                  decoration: BoxDecoration(color: green,
+                    borderRadius: BorderRadius.circular(8)))),
+              Positioned(left: (trackWidth * progress).clamp(0.0, trackWidth), top: 1,
+                child: AnimatedBuilder(animation: pulse,
+                  builder: (context, _) => Container(
+                    width: 44, height: 43,
+                    decoration: BoxDecoration(
+                      color: Color.lerp(Colors.white, pale, pulse.value),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: green, width: 2)),
+                    child: const Icon(Icons.smart_toy_rounded, color: green, size: 25)))),
+            ]),
+          ),
+        ]));
+      }),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        const _RouteLabel(Icons.warehouse_outlined, 'Base'),
+        const _RouteLabel(Icons.home_outlined, 'House'),
+        _RouteLabel(widget.wasteType.icon, 'Hub'),
+      ]),
+      const SizedBox(height: 11),
+      const Text('Demo animation only • Position advances when a stage is confirmed. No live GPS or ETA.',
+        style: TextStyle(fontSize: 10, color: Colors.black54)),
+    ]),
+  );
+}
+
+class _RouteLabel extends StatelessWidget {
+  const _RouteLabel(this.icon, this.text);
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    Icon(icon, color: deep, size: 18),
+    Text(text, style: const TextStyle(color: deep, fontSize: 11)),
+  ]);
+}
+
+class AnimatedTrackingTimeline extends StatelessWidget {
+  const AnimatedTrackingTimeline({super.key, required this.stage, required this.type});
+  final JobStage stage;
+  final WasteType type;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = <String>[
+      'Request received',
+      'Autobin dispatched',
+      'Arrived at house • unlock QR/NFC',
+      'Waste collected • verify material',
+      'At ${type.destination} • check load',
+      'Delivery completed',
+    ];
+    final icons = <IconData>[
+      Icons.receipt_long_outlined,
+      Icons.smart_toy_outlined,
+      Icons.home_outlined,
+      Icons.delete_outline,
+      Icons.warehouse_outlined,
+      Icons.check_circle_outline,
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('COLLECTION STEPS', style: TextStyle(
+        fontSize: 12, fontWeight: FontWeight.w900, color: deep)),
+      const SizedBox(height: 9),
+      for (var i = 0; i < labels.length; i++) ...[
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+          decoration: BoxDecoration(
+            color: i == stage.index ? pale : Colors.white,
+            border: Border.all(
+              color: i == stage.index ? green : Colors.black12,
+              width: i == stage.index ? 2 : 1),
+            borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            AnimatedContainer(duration: const Duration(milliseconds: 450),
+              width: 33, height: 33,
+              decoration: BoxDecoration(
+                color: i <= stage.index ? green : const Color(0xFFE6E9E7),
+                shape: BoxShape.circle),
+              child: Icon(i < stage.index ? Icons.check : icons[i], size: 18,
+                color: i <= stage.index ? Colors.white : Colors.blueGrey)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(labels[i], style: TextStyle(
+              fontSize: 12, color: i > stage.index ? Colors.black54 : deep,
+              fontWeight: i == stage.index ? FontWeight.w800 : FontWeight.w500))),
+            if (i == stage.index) const Text('NOW', style: TextStyle(
+              fontSize: 10, color: green, fontWeight: FontWeight.w900))
+            else if (i < stage.index) const Icon(Icons.check_circle, color: green, size: 17)
+            else const Text('NEXT', style: TextStyle(fontSize: 9, color: Colors.black45)),
+          ]),
+        ),
+        if (i < labels.length - 1)
+          Padding(padding: const EdgeInsets.only(left: 27),
+            child: Container(width: 3, height: 13,
+              color: i < stage.index ? green : Colors.black12)),
+      ],
+    ]);
+  }
 }

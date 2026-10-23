@@ -394,11 +394,14 @@ class _BinGoDemoState extends State<BinGoDemo> {
           const Text('GPS + LiDAR navigation • future hardware integration',
             textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
           const SizedBox(height: 13),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            const RobotMetric('Battery', '85%', Icons.battery_5_bar),
-            robotMetric('Navigation', 'Demo', Icons.route_outlined),
-            robotMetric('Mode', 'Simulated', Icons.settings_remote_outlined),
-          ]),
+         Row(
+  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  children: [
+    const RobotMetric('Battery', '85%', Icons.battery_5_bar),
+    const RobotMetric('Navigation', 'Demo', Icons.route_outlined),
+    const RobotMetric('Mode', 'Simulated', Icons.settings_remote_outlined),
+  ],
+),
         ])),
       const SizedBox(height: 17),
       heading('Three waste streams'),

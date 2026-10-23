@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 // BinGo — hackathon demo. All data and hardware events are simulated locally.
 void main() => runApp(const BinGoApp());
@@ -6,42 +7,18 @@ void main() => runApp(const BinGoApp());
 const green = Color(0xFF18794B);
 const deep = Color(0xFF143D30);
 const pale = Color(0xFFE9F6ED);
-const canvas = Color(0xFFF5F8F5);
+const canvas = Color(0xFFF2F7F4);
 
-enum WasteType { general, recycling, organic }
+enum WasteType { recycling }
 enum JobStage { requested, dispatched, arrived, collected, atHub, completed }
 
 extension WasteDetails on WasteType {
-  String get title => switch (this) {
-    WasteType.general => 'General',
-    WasteType.recycling => 'Recycling',
-    WasteType.organic => 'Organic',
-  };
-  String get malay => switch (this) {
-    WasteType.general => 'Sisa Domestik',
-    WasteType.recycling => 'Kitar Semula',
-    WasteType.organic => 'Sisa Organik',
-  };
-  String get description => switch (this) {
-    WasteType.general => 'Non-recyclable household waste',
-    WasteType.recycling => 'Clean plastic, paper, metal or glass',
-    WasteType.organic => 'Food scraps and garden waste',
-  };
-  String get destination => switch (this) {
-    WasteType.general => 'Domestic Waste Hub',
-    WasteType.recycling => 'Recycling Hub',
-    WasteType.organic => 'Organic / Compost Hub',
-  };
-  IconData get icon => switch (this) {
-    WasteType.general => Icons.delete_outline_rounded,
-    WasteType.recycling => Icons.recycling_rounded,
-    WasteType.organic => Icons.eco_rounded,
-  };
-  Color get color => switch (this) {
-    WasteType.general => const Color(0xFF64748B),
-    WasteType.recycling => const Color(0xFF16864E),
-    WasteType.organic => const Color(0xFFC28A32),
-  };
+  String get title => 'Recycling';
+  String get malay => 'Kitar Semula';
+  String get description => 'Paper, plastic, glass, and metal';
+  String get destination => 'Recycling Hub';
+  IconData get icon => Icons.recycling_rounded;
+  Color get color => green;
 }
 
 String stageText(JobStage s) => switch (s) {
@@ -134,8 +111,7 @@ class _BinGoDemoState extends State<BinGoDemo> {
     setState(() {
       jobs.insert(0, CollectionJob(
         id: 'BG-${nextNumber++}', type: chosen, address: address.text.trim(),
-        kg: weight, material: chosen == WasteType.recycling ? material :
-          chosen == WasteType.organic ? 'Food / garden scraps' : 'General household waste',
+        kg: weight, material: material,
         created: DateTime.now(),
       ));
       unlocked = false;
@@ -206,7 +182,7 @@ class _BinGoDemoState extends State<BinGoDemo> {
           tooltip: 'Prototype information', onPressed: () => showDialog<void>(
             context: context, builder: (context) => AlertDialog(
               title: const Text('Hackathon demonstration'),
-              content: const Text('This is a clickable software prototype. Autobin navigation, GPS/LiDAR, QR/NFC access, AI camera inspection, weights and rewards are SIMULATED. No physical robot or shared backend is connected. Organic composting is the proposed third stream.'),
+              content: const Text('BinGo Recycle is a software-only demo. The satellite-inspired map, pseudo-3D robot, QR/NFC, AI camera, GPS and route tracking are simulated. No real robot, map service, or shared backend is connected.'),
               actions: [TextButton(onPressed: () => Navigator.pop(context),
                 child: const Text('OK'))]))),
           const SizedBox(width: 8)],
@@ -234,31 +210,29 @@ class _BinGoDemoState extends State<BinGoDemo> {
       gradient: const LinearGradient(colors: [deep, green]),
       borderRadius: BorderRadius.circular(24)),
       child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Township for Tomorrow', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        Text('SIME DARBY • TOWNSHIP FOR TOMORROW', style: TextStyle(color: Colors.white70, fontSize: 13)),
         SizedBox(height: 7),
-        Text('Waste pickup at your doorstep.', style: TextStyle(color: Colors.white,
+        Text('Recycling, reimagined.', style: TextStyle(color: Colors.white,
           fontSize: 27, fontWeight: FontWeight.w900)),
         SizedBox(height: 9),
-        Text('Choose your waste type and call BinGo on demand.',
+        Text('One tap to collect your recyclables. Track every step, earn Green Points.',
           style: TextStyle(color: Colors.white70)),
         SizedBox(height: 10),
         Text('DEMO • Autonomous Autobin concept / human-runner-ready workflow',
           style: TextStyle(color: Colors.white70, fontSize: 11)),
       ])),
     const SizedBox(height: 23),
-    heading('Select Waste Type / Pilih Jenis Sampah'),
+    heading('Your recycling collection'),
     const SizedBox(height: 10),
-    LayoutBuilder(builder: (context, constraints) {
-      final narrow = constraints.maxWidth < 530;
-      final cards = WasteType.values.map(wasteCard).toList();
-      return narrow ? Column(children: [for (final c in cards) Padding(
-        padding: const EdgeInsets.only(bottom: 9), child: c)]) :
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (int i = 0; i < cards.length; i++) ...[
-            if (i != 0) const SizedBox(width: 10), Expanded(child: cards[i]),
-          ],
-        ]);
-    }),
+    const Card(child: Padding(padding: EdgeInsets.all(17), child: Row(children: [
+      CircleAvatar(backgroundColor: pale, radius: 26,
+        child: Icon(Icons.recycling_rounded, color: green, size: 30)),
+      SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [Text('Recyclables only', style: TextStyle(fontSize: 17,
+          color: deep, fontWeight: FontWeight.w800)),
+          Text('Plastic • Paper • Glass • Metal', style: TextStyle(color: Colors.black54, fontSize: 12))])),
+      Icon(Icons.check_circle_rounded, color: green),
+    ]))),
     const SizedBox(height: 16),
     Card(child: Padding(padding: const EdgeInsets.all(17), child: Column(
       crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -297,33 +271,14 @@ class _BinGoDemoState extends State<BinGoDemo> {
       ]))),
     const SizedBox(height: 17),
     heading('How it works'),
-    info(Icons.touch_app_outlined, '1. Request', 'Resident chooses General, Recycling or Organic.'),
+    info(Icons.touch_app_outlined, '1. Request', 'Resident schedules a doorstep recycling pickup.'),
     info(Icons.smart_toy_outlined, '2. Collect', 'Simulated Autobin travels via township-approved paths.'),
-    info(Icons.warehouse_outlined, '3. Deliver', 'Waste reaches its matching hub. Trucks stay at central stations.'),
+    info(Icons.warehouse_outlined, '3. Deliver', 'Recyclables reach the central sorting hub.'),
   ]);
 
-  Widget wasteCard(WasteType type) {
-    final picked = chosen == type;
-    return InkWell(onTap: () => setState(() => chosen = type),
-      borderRadius: BorderRadius.circular(17),
-      child: Container(width: double.infinity, padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(color: picked ? pale : Colors.white,
-          borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: picked ? green : Colors.black12, width: picked ? 2 : 1)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Icon(type.icon, size: 31, color: type.color),
-            const Spacer(), if (picked) const Icon(Icons.check_circle, color: green)]),
-          const SizedBox(height: 9),
-          Text(type.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          Text(type.malay, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-          const SizedBox(height: 5),
-          Text(type.description, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-        ])));
-  }
-
   Widget trackingPage() => ListView(padding: const EdgeInsets.all(18), children: [
-    heading('Track your collection'),
-    const Text('Track each stage of the simulated Autobin journey.',
+    heading('Live journey preview'),
+    const Text('Satellite-inspired route and animated milestone tracking • demo data.',
       style: TextStyle(color: Colors.black54)),
     const SizedBox(height: 17),
     if (jobs.isEmpty) empty('No pickups yet', 'Create one on Home to start the demo.'),
@@ -366,15 +321,15 @@ class _BinGoDemoState extends State<BinGoDemo> {
   Widget autobinPage() {
     final j = current;
     return ListView(padding: const EdgeInsets.all(18), children: [
-      heading('Meet your Autobin'),
-      const Text('Autonomous smart collection concept • interactive demo',
+      heading('Autobin • Digital Twin'),
+      const Text('Floating 3D-style robot • interactive collection controls',
         style: TextStyle(color: Colors.black54)),
       const SizedBox(height: 16),
       Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [deep, green]),
         borderRadius: BorderRadius.circular(22)),
         child: Column(children: [
-          const Icon(Icons.smart_toy_rounded, size: 74, color: Colors.white),
+          const SizedBox(height: 208, child: FloatingAutobin()),
           const SizedBox(height: 7),
           const Text('BinGo Autobin 01', style: TextStyle(fontSize: 23,
             color: Colors.white, fontWeight: FontWeight.w800)),
@@ -388,11 +343,11 @@ class _BinGoDemoState extends State<BinGoDemo> {
           ]),
         ])),
       const SizedBox(height: 17),
-      heading('Three waste streams'),
+      heading('One streamlined recycling service'),
       const SizedBox(height: 9),
-      for (final w in WasteType.values) info(w.icon,
-        '${w.title} / ${w.malay}', '${w.description} → ${w.destination}'),
-      const Text('Concept note: the robot illustration has dual compartments. This demo models a third organic collection stream as a separate collection trip; it does not claim three physical compartments.',
+      info(Icons.recycling_rounded, 'Recycling / Kitar Semula',
+        'Plastic, paper, glass and metal are collected and sorted by hub workers.'),
+      const Text('The robot illustration is a pseudo-3D Flutter animation, not a physical 3D model.',
         style: TextStyle(fontSize: 11, color: Colors.black54)),
       const SizedBox(height: 18),
       heading('Robot interaction simulator'),
@@ -453,9 +408,7 @@ class _BinGoDemoState extends State<BinGoDemo> {
     const SizedBox(height: 17),
     info(Icons.recycling, 'Earn 10 points per verified kg',
       'Only recycling loads earn points after accepted inspection and hub verification.'),
-    info(Icons.delete_outline, 'General waste', 'No rewards for ordinary domestic waste.'),
-    info(Icons.eco_outlined, 'Organic waste',
-      'Diverted to a proposed composting hub; organic rewards are not enabled.'),
+    
     const SizedBox(height: 12),
     heading('Reward concepts • not redeemable in this demo'),
     info(Icons.shopping_bag_outlined, '250 points', 'Reusable tote bag'),
@@ -472,7 +425,7 @@ class _BinGoDemoState extends State<BinGoDemo> {
     final active = jobs.where((j) => j.stage != JobStage.completed).length;
     final done = jobs.where((j) => j.stage == JobStage.completed).length;
     return ListView(padding: const EdgeInsets.all(18), children: [
-      heading('Township operations / JMB'),
+      heading('Recycling control centre'),
       const Text('Operator-led verification, dispatch and central hubs',
         style: TextStyle(color: Colors.black54)),
       const SizedBox(height: 15),
@@ -484,9 +437,9 @@ class _BinGoDemoState extends State<BinGoDemo> {
         Expanded(child: stat('$done', 'Delivered')),
       ]),
       const SizedBox(height: 16),
-      heading('Collection destinations'),
-      for (final w in WasteType.values) info(w.icon, w.destination,
-        '${jobs.where((j) => j.type == w && j.stage.index >= JobStage.atHub.index).length} load(s) received'),
+      heading('Recycling collection hub'),
+      info(Icons.warehouse_outlined, 'Recycling Hub',
+        '${jobs.where((j) => j.stage.index >= JobStage.atHub.index).length} loads received • manual sorting at hub'),
       const SizedBox(height: 15), heading('Active dispatch queue'),
       if (jobs.isEmpty) empty('No requests', 'Create a pickup from the Home tab.'),
       for (final j in jobs) Card(margin: const EdgeInsets.only(bottom: 13),
@@ -500,7 +453,7 @@ class _BinGoDemoState extends State<BinGoDemo> {
             Text('Hub: ${j.type.destination}', style: const TextStyle(fontSize: 12)),
             if (j.stage == JobStage.collected) ...[
               const SizedBox(height: 12),
-              const Text('SIMULATED CAMERA CHECK', style: TextStyle(
+              const Text('SIMULATED MATERIAL CHECK', style: TextStyle(
                 fontWeight: FontWeight.w800, fontSize: 11, color: deep)),
               const Text('Judge can accept a valid load or flag contamination. Not a real AI model.',
                 style: TextStyle(color: Colors.black54, fontSize: 11)),
@@ -534,7 +487,7 @@ class _BinGoDemoState extends State<BinGoDemo> {
                 fontWeight: FontWeight.bold))),
           ]))),
       const SizedBox(height: 10),
-      const Text('Presentation note: Human-operated buggies are the realistic initial rollout. Autonomous navigation and hardware controls are future-ready concepts. Organic collection is modeled as a separate trip to a composting hub.',
+      const Text('Presentation note: Human-operated collection is the realistic initial rollout. Autonomous navigation and AI camera recognition are future features. Recyclables are sorted by hub staff.',
         style: TextStyle(fontSize: 12, color: Colors.black54)),
     ]);
   }
@@ -582,95 +535,171 @@ class RobotMetric extends StatelessWidget {
 
 // Visual simulation only: animations reflect stage changes triggered by demo buttons.
 // There is no GPS connection or continuously updating physical robot position.
-class AnimatedAutobinRoute extends StatefulWidget {
+class AnimatedAutobinRoute extends StatelessWidget {
   const AnimatedAutobinRoute({super.key, required this.stage, required this.wasteType});
   final JobStage stage;
   final WasteType wasteType;
-
+  double get position => switch (stage) {
+    JobStage.requested => .03,
+    JobStage.dispatched => .25,
+    JobStage.arrived => .49,
+    JobStage.collected => .57,
+    JobStage.atHub => .94,
+    JobStage.completed => 1.0,
+  };
   @override
-  State<AnimatedAutobinRoute> createState() => _AnimatedAutobinRouteState();
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: Container(color: const Color(0xFF132C29), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: Row(children: [const Icon(Icons.satellite_alt_outlined,
+              color: Color(0xFF9CF0C1), size: 17),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('SATELLITE-STYLE TOWNSHIP VIEW',
+              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFF294A40),
+                borderRadius: BorderRadius.circular(30)),
+              child: const Text('SIMULATION', style: TextStyle(fontSize: 9,
+                fontWeight: FontWeight.bold, color: Color(0xFFA8F8C6))))])),
+        AspectRatio(aspectRatio: 1.72, child: TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 1300),
+          curve: Curves.easeInOutCubic,
+          tween: Tween<double>(end: position),
+          builder: (context, progress, _) => CustomPaint(
+            painter: TownshipMapPainter(progress: progress)))),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 15),
+          child: Row(children: [const Icon(Icons.circle, color: Color(0xFF81E5AD), size: 10),
+            const SizedBox(width: 8), Expanded(child: Text(stageText(stage),
+              style: const TextStyle(color: Colors.white,
+                fontWeight: FontWeight.w700, fontSize: 12)))])),
+      ])));
 }
 
-class _AnimatedAutobinRouteState extends State<AnimatedAutobinRoute>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController pulse = AnimationController(
-    vsync: this, duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
-
+class TownshipMapPainter extends CustomPainter {
+  TownshipMapPainter({required this.progress});
+  final double progress;
   @override
-  void dispose() { pulse.dispose(); super.dispose(); }
-
-  double get distance {
-    switch (widget.stage) {
-      case JobStage.requested: return 0;
-      case JobStage.dispatched: return .28;
-      case JobStage.arrived: return .50;
-      case JobStage.collected: return .64;
-      case JobStage.atHub: return .94;
-      case JobStage.completed: return 1;
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final bg = Paint()..color = const Color(0xFF284F47);
+    canvas.drawRect(Offset.zero & size, bg);
+    final park = Paint()..color = const Color(0xFF356B55);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w*.06,h*.1,w*.28,h*.28), const Radius.circular(10)),park);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w*.67,h*.57,w*.26,h*.32), const Radius.circular(12)),park);
+    final road = Paint()..color = const Color(0xFF84938B)..style = PaintingStyle.stroke..strokeWidth=19..strokeCap=StrokeCap.round;
+    final streets = <List<Offset>>[
+      [Offset(w*.12,h*.72),Offset(w*.87,h*.72)],
+      [Offset(w*.48,h*.10),Offset(w*.48,h*.88)],
+      [Offset(w*.12,h*.22),Offset(w*.87,h*.22)],
+    ];
+    for (final pts in streets) { final p=Path()..moveTo(pts[0].dx,pts[0].dy)..lineTo(pts[1].dx,pts[1].dy);canvas.drawPath(p,road);}
+    final curb=Paint()..color=const Color(0xFFBEC8BF)..strokeWidth=1..style=PaintingStyle.stroke;
+    for(final pts in streets){final p=Path()..moveTo(pts[0].dx,pts[0].dy)..lineTo(pts[1].dx,pts[1].dy);canvas.drawPath(p,curb);}
+    final building=Paint()..color=const Color(0xFFB5BCA8);
+    final roof=Paint()..color=const Color(0xFF697E70);
+    for(var row=0;row<3;row++){
+      for(var col=0;col<7;col++){
+        final x=w*(.08+col*.125),y=h*(.04+row*.30);
+        if((col==3)||(row==2&&col>4)||(row==0&&col<3))continue;
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,y,w*.075,h*.11),const Radius.circular(2)),building);
+        canvas.drawRect(Rect.fromLTWH(x+3,y+3,w*.075-6,h*.11-6),roof);
+      }
     }
+    final points=[Offset(w*.14,h*.72),Offset(w*.48,h*.72),Offset(w*.48,h*.22),Offset(w*.82,h*.22)];
+    final path=Path()..moveTo(points[0].dx,points[0].dy);
+    for(var i=1;i<points.length;i++)path.lineTo(points[i].dx,points[i].dy);
+    canvas.drawPath(path,Paint()..color=const Color(0xFF0D392B)..style=PaintingStyle.stroke..strokeWidth=9..strokeCap=StrokeCap.round);
+    canvas.drawPath(path,Paint()..color=const Color(0xFF90F2A5)..style=PaintingStyle.stroke..strokeWidth=4..strokeCap=StrokeCap.round);
+    final segment=(progress*3).clamp(0.0,2.9999).toDouble();
+    final idx=segment.floor(), frac=segment-idx;
+    final here=Offset.lerp(points[idx],points[idx+1],frac)!;
+    canvas.drawCircle(here,15,Paint()..color=const Color(0x5587FFC5));
+    canvas.drawCircle(here,9,Paint()..color=const Color(0xFF0B6445));
+    canvas.drawCircle(here,5,Paint()..color=Colors.white);
+    for(final pt in [points[0],points[2],points[3]]) {
+      canvas.drawCircle(pt,7,Paint()..color=const Color(0xFFDEFFB0));
+      canvas.drawCircle(pt,4,Paint()..color=const Color(0xFF175C3E));
+    }
+    _label(canvas,'BASE',points[0]+const Offset(-12,-23));
+    _label(canvas,'HOUSE',points[2]+const Offset(10,-22));
+    _label(canvas,'RECYCLE HUB',points[3]+const Offset(-72,15));
   }
-
+  void _label(Canvas c,String text,Offset at) {
+    final p=TextPainter(text:TextSpan(text:text,style:const TextStyle(
+      color:Colors.white,fontSize:10,fontWeight:FontWeight.w800)),
+      textDirection:TextDirection.ltr)..layout();
+    p.paint(c,at);
+  }
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(16)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('AUTOBIN JOURNEY • SIMULATION', style: TextStyle(
-        color: deep, fontSize: 11, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 7),
-      Text(stageText(widget.stage), style: const TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w700, color: green)),
-      const SizedBox(height: 19),
-      LayoutBuilder(builder: (context, bounds) {
-        final trackWidth = (bounds.maxWidth - 44).clamp(0.0, double.infinity).toDouble();
-        return SizedBox(height: 57, child: Stack(clipBehavior: Clip.none, children: [
-          Positioned(left: 22, right: 22, top: 19,
-            child: Container(height: 5, decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(8)))),
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: distance),
-            duration: const Duration(milliseconds: 950),
-            curve: Curves.easeInOutCubic,
-            builder: (context, progress, child) => Stack(children: [
-              Positioned(left: 22, top: 19,
-                child: Container(width: trackWidth * progress, height: 5,
-                  decoration: BoxDecoration(color: green,
-                    borderRadius: BorderRadius.circular(8)))),
-              Positioned(left: (trackWidth * progress).clamp(0.0, trackWidth), top: 1,
-                child: AnimatedBuilder(animation: pulse,
-                  builder: (context, _) => Container(
-                    width: 44, height: 43,
-                    decoration: BoxDecoration(
-                      color: Color.lerp(Colors.white, pale, pulse.value),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: green, width: 2)),
-                    child: const Icon(Icons.smart_toy_rounded, color: green, size: 25)))),
-            ]),
-          ),
-        ]));
-      }),
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        const _RouteLabel(Icons.warehouse_outlined, 'Base'),
-        const _RouteLabel(Icons.home_outlined, 'House'),
-        _RouteLabel(widget.wasteType.icon, 'Hub'),
-      ]),
-      const SizedBox(height: 11),
-      const Text('Demo animation only • Position advances when a stage is confirmed. No live GPS or ETA.',
-        style: TextStyle(fontSize: 10, color: Colors.black54)),
-    ]),
-  );
+  bool shouldRepaint(covariant TownshipMapPainter oldDelegate)=>oldDelegate.progress!=progress;
 }
 
-class _RouteLabel extends StatelessWidget {
-  const _RouteLabel(this.icon, this.text);
-  final IconData icon;
-  final String text;
+class FloatingAutobin extends StatefulWidget {
+  const FloatingAutobin({super.key});
   @override
-  Widget build(BuildContext context) => Column(children: [
-    Icon(icon, color: deep, size: 18),
-    Text(text, style: const TextStyle(color: deep, fontSize: 11)),
-  ]);
+  State<FloatingAutobin> createState()=>_FloatingAutobinState();
+}
+class _FloatingAutobinState extends State<FloatingAutobin>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller=AnimationController(
+    vsync:this,duration:const Duration(milliseconds:2300))..repeat(reverse:true);
+  @override
+  void dispose(){controller.dispose();super.dispose();}
+  @override
+  Widget build(BuildContext context)=>AnimatedBuilder(animation:controller,
+    builder:(context,_)=>Transform.translate(
+      offset:Offset(0,-5*math.sin(controller.value*math.pi)),
+      child:CustomPaint(painter:Autobin3DPainter(controller.value),
+        child:const SizedBox.expand())));
+}
+class Autobin3DPainter extends CustomPainter {
+  Autobin3DPainter(this.motion);
+  final double motion;
+  @override
+  void paint(Canvas c,Size size){
+    final center=size.width/2, base=size.height*.78;
+    c.drawOval(Rect.fromCenter(center:Offset(center,base+12),width:175,height:23),
+      Paint()..color=const Color(0x66042017));
+    final chassis=Path()..moveTo(center-103,base-40)..lineTo(center+50,base-40)
+      ..lineTo(center+95,base-72)..lineTo(center-56,base-72)..close();
+    c.drawPath(chassis,Paint()..color=const Color(0xFF172E29));
+    for(final x in [center-65,center+58]){
+      c.drawOval(Rect.fromCenter(center:Offset(x,base-28),width:29,height:47),
+        Paint()..color=const Color(0xFF081F1A));
+      c.drawOval(Rect.fromCenter(center:Offset(x,base-28),width:11,height:22),
+        Paint()..color=const Color(0xFF6DCDA0));
+    }
+    final front=Path()..moveTo(center-80,base-145)..lineTo(center+53,base-145)
+      ..lineTo(center+53,base-48)..lineTo(center-80,base-48)..close();
+    c.drawPath(front,Paint()..shader=const LinearGradient(
+      colors:[Color(0xFFE9FFF5),Color(0xFF70D2AD)],
+      begin:Alignment.topLeft,end:Alignment.bottomRight)
+      .createShader(Rect.fromLTWH(center-80,base-145,133,98)));
+    final side=Path()..moveTo(center+53,base-145)..lineTo(center+93,base-170)
+      ..lineTo(center+93,base-72)..lineTo(center+53,base-48)..close();
+    c.drawPath(side,Paint()..color=const Color(0xFF2B8F73));
+    final top=Path()..moveTo(center-80,base-145)..lineTo(center-40,base-172)
+      ..lineTo(center+93,base-170)..lineTo(center+53,base-145)..close();
+    c.drawPath(top,Paint()..color=const Color(0xFFD8FCE8));
+    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(center-58,base-128,85,36),
+      const Radius.circular(7)),Paint()..color=const Color(0xFF165843));
+    final tp=TextPainter(text:const TextSpan(text:'BinGo',style:TextStyle(
+      color:Colors.white,fontSize:20,fontWeight:FontWeight.w900)),textDirection:TextDirection.ltr)..layout();
+    tp.paint(c,Offset(center-47,base-122));
+    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(center-54,base-82,74,11),
+      const Radius.circular(5)),Paint()..color=const Color(0xFFB5FFD7));
+    final lid=Path()..moveTo(center-81,base-149-8*motion)
+      ..lineTo(center-40,base-182-13*motion)
+      ..lineTo(center+93,base-180-13*motion)
+      ..lineTo(center+53,base-149-8*motion)..close();
+    c.drawPath(lid,Paint()..color=const Color(0xFF2E6D53));
+    c.drawPath(lid,Paint()..color=const Color(0xFFB4F8CC)..style=PaintingStyle.stroke..strokeWidth=2);
+    c.drawCircle(Offset(center+71,base-114),5,Paint()..color=const Color(0xFF92FFA6));
+  }
+  @override
+  bool shouldRepaint(covariant Autobin3DPainter oldDelegate)=>oldDelegate.motion!=motion;
 }
 
 class AnimatedTrackingTimeline extends StatelessWidget {

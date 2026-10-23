@@ -48,6 +48,44 @@ class CollectionJob {
       ? (verifiedKg * 10).round() : 0;
 }
 
+// Sample rewards for hackathon demonstration; not real merchant offers.
+class RewardOffer {
+  const RewardOffer(this.name, this.description, this.cost, this.icon, this.category,
+      {this.quantity = 5});
+  final String name;
+  final String description;
+  final int cost;
+  final IconData icon;
+  final String category;
+  final int quantity;
+}
+
+class RedeemedReward {
+  RedeemedReward(this.offer, this.code, this.time);
+  final RewardOffer offer;
+  final String code;
+  final DateTime time;
+}
+
+const rewardCatalog = <RewardOffer>[
+  RewardOffer('RM5 Eco Voucher', 'Demo township partner voucher', 50,
+      Icons.local_offer_outlined, 'Vouchers'),
+  RewardOffer('Reusable Shopping Bag', 'Carry groceries without single-use bags', 80,
+      Icons.shopping_bag_outlined, 'Eco Products'),
+  RewardOffer('Bamboo Toothbrush', 'Reusable-handle-inspired eco item', 100,
+      Icons.brush_outlined, 'Eco Products'),
+  RewardOffer('Reusable Water Bottle', 'Stay hydrated with less plastic waste', 150,
+      Icons.water_drop_outlined, 'Eco Products'),
+  RewardOffer('RM10 Community Voucher', 'Demo local business voucher', 200,
+      Icons.card_giftcard_outlined, 'Vouchers'),
+  RewardOffer('Seed Starter Kit', 'Start growing herbs at home', 120,
+      Icons.spa_outlined, 'Community'),
+  RewardOffer('Community Garden Pass', 'Demo gardening workshop entry', 250,
+      Icons.park_outlined, 'Community'),
+  RewardOffer('Recycling Champion Badge', 'Digital recognition for eco heroes', 30,
+      Icons.workspace_premium_outlined, 'Digital'),
+];
+
 class BinGoApp extends StatelessWidget {
   const BinGoApp({super.key});
   @override
@@ -82,6 +120,10 @@ class _BinGoDemoState extends State<BinGoDemo> {
   int tab = 0;
   int nextNumber = 1001;
   int greenPoints = 0;
+  int nextRedemption = 1;
+  String rewardFilter = 'All';
+  final List<RedeemedReward> redemptionHistory = [];
+
   WasteType chosen = WasteType.recycling;
   String material = 'Mixed recyclables';
   double weight = 2.0;
@@ -392,34 +434,196 @@ class _BinGoDemoState extends State<BinGoDemo> {
     ]);
   }
 
-  Widget rewardsPage() => ListView(padding: const EdgeInsets.all(18), children: [
-    heading('Green Points / Mata Ganjaran'),
-    const SizedBox(height: 12),
-    Container(padding: const EdgeInsets.all(26), decoration: BoxDecoration(
-      gradient: const LinearGradient(colors: [green, deep]),
-      borderRadius: BorderRadius.circular(23)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Icon(Icons.stars_rounded, size: 40, color: Colors.amberAccent),
-        const SizedBox(height: 8),
-        Text('$greenPoints', style: const TextStyle(color: Colors.white,
-          fontSize: 48, fontWeight: FontWeight.w900)),
-        const Text('Verified recycling points', style: TextStyle(color: Colors.white70)),
-      ])),
-    const SizedBox(height: 17),
-    info(Icons.recycling, 'Earn 10 points per verified kg',
-      'Only recycling loads earn points after accepted inspection and hub verification.'),
-    
-    const SizedBox(height: 12),
-    heading('Reward concepts • not redeemable in this demo'),
-    info(Icons.shopping_bag_outlined, '250 points', 'Reusable tote bag'),
-    info(Icons.park_outlined, '500 points', 'Community garden voucher'),
-    if (jobs.any((j) => j.credited)) ...[
-      const SizedBox(height: 10), heading('Reward history'),
-      for (final j in jobs.where((j) => j.credited))
-        info(Icons.check_circle_outline, '${j.id}: +${j.points} points',
-          '${j.verifiedKg.toStringAsFixed(1)} kg verified recycling'),
-    ],
-  ]);
+  int remainingStock(RewardOffer offer) => offer.quantity -
+      redemptionHistory.where((entry) => identical(entry.offer, offer)).length;
+
+  void redeemReward(RewardOffer offer) async {
+    if (greenPoints < offer.cost) {
+      message('Not enough points. You need ${offer.cost - greenPoints} more.');
+      return;
+    }
+    if (remainingStock(offer) <= 0) {
+      message('This demo reward is out of stock.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Redeem reward?'),
+        content: Text('Redeem ${offer.name} for ${offer.cost} Green Points? '
+            'This is a demo redemption only; no physical reward is issued.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirm redeem')),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    // Check again after the dialog, so a reward cannot overspend points.
+    if (greenPoints < offer.cost || remainingStock(offer) <= 0) {
+      message('Points or inventory have changed. Please try again.');
+      return;
+    }
+    final code = 'DEMO-${(nextRedemption++).toString().padLeft(4, '0')}';
+    setState(() {
+      greenPoints -= offer.cost;
+      redemptionHistory.insert(0, RedeemedReward(offer, code, DateTime.now()));
+    });
+    if (!mounted) return;
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Row(children: [Icon(Icons.check_circle, color: green),
+          SizedBox(width: 10), Text('Redeemed!')]),
+      content: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(offer.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          SelectableText('Demo redemption code: $code'),
+          const SizedBox(height: 8),
+          const Text('Simulation only. No real voucher or product is issued.',
+              style: TextStyle(fontSize: 12, color: Colors.black54)),
+        ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Done'))],
+    ));
+  }
+
+  Widget rewardCard(RewardOffer offer) {
+    final remaining = remainingStock(offer);
+    final affordable = greenPoints >= offer.cost;
+    return Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(
+      padding: const EdgeInsets.all(14), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(width: 54, height: 54,
+              decoration: BoxDecoration(color: pale,
+                borderRadius: BorderRadius.circular(14)),
+              child: Icon(offer.icon, color: green, size: 28)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(offer.name, style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 3),
+                Text(offer.description, style: const TextStyle(
+                    color: Colors.black54, fontSize: 12)),
+                const SizedBox(height: 5),
+                Text(offer.category, style: const TextStyle(
+                    color: green, fontSize: 11, fontWeight: FontWeight.w600)),
+              ])),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            const Icon(Icons.stars_rounded, color: Color(0xFFE4A327), size: 19),
+            const SizedBox(width: 5),
+            Text('${offer.cost} pts', style: const TextStyle(
+                fontWeight: FontWeight.w800, color: deep)),
+            const SizedBox(width: 12),
+            Expanded(child: Text('$remaining left (demo)',
+                style: const TextStyle(color: Colors.black54, fontSize: 11))),
+            FilledButton(
+              onPressed: remaining <= 0 ? null : () => redeemReward(offer),
+              child: Text(remaining <= 0 ? 'Sold out' :
+                  affordable ? 'Redeem' : 'Need ${offer.cost - greenPoints} pts'),
+            ),
+          ]),
+        ],
+      ),
+    ));
+  }
+
+  Widget rewardsPage() {
+    final offers = rewardCatalog.where((offer) =>
+        rewardFilter == 'All' || offer.category == rewardFilter).toList();
+    final earned = jobs.where((job) => job.credited)
+        .fold<int>(0, (sum, job) => sum + job.points);
+    final spent = redemptionHistory.fold<int>(0,
+        (sum, entry) => sum + entry.offer.cost);
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      heading('Green Rewards / Ganjaran Hijau'),
+      const SizedBox(height: 6),
+      const Text('Recycle, collect Green Points and redeem demo rewards.',
+          style: TextStyle(color: Colors.black54)),
+      const SizedBox(height: 14),
+      Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [green, deep]),
+        borderRadius: BorderRadius.circular(23)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [Icon(Icons.stars_rounded, size: 32,
+              color: Colors.amberAccent), SizedBox(width: 8),
+              Text('AVAILABLE POINTS', style: TextStyle(color: Colors.white70,
+                  fontSize: 12, fontWeight: FontWeight.bold))]),
+          const SizedBox(height: 8),
+          Text('$greenPoints', style: const TextStyle(color: Colors.white,
+              fontSize: 47, fontWeight: FontWeight.w900)),
+          const Text('10 points per verified kg of recycling',
+              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: Text('Earned: $earned', style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w600))),
+            Text('Redeemed: $spent', style: const TextStyle(color: Colors.white)),
+          ]),
+        ])),
+      const SizedBox(height: 12),
+      Card(child: Padding(padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Hackathon test controls', style: TextStyle(
+              fontWeight: FontWeight.w800, color: deep)),
+          const SizedBox(height: 5),
+          const Text('Try the shop without completing 30 recycling trips. '
+              'These are simulated points, not real earned credits.',
+              style: TextStyle(fontSize: 12, color: Colors.black54)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(onPressed: () {
+            setState(() => greenPoints += 300);
+            message('Added 300 DEMO points for reward testing.');
+          }, icon: const Icon(Icons.science_outlined),
+              label: const Text('Add 300 demo points')),
+        ]))),
+      const SizedBox(height: 15),
+      heading('Reward Shop'),
+      const SizedBox(height: 7),
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(
+        children: ['All', 'Eco Products', 'Vouchers', 'Community', 'Digital']
+          .map((category) => Padding(padding: const EdgeInsets.only(right: 7),
+            child: ChoiceChip(label: Text(category),
+              selected: category == rewardFilter,
+              onSelected: (_) => setState(() => rewardFilter = category))))
+          .toList(),
+      )),
+      const SizedBox(height: 9),
+      for (final offer in offers) rewardCard(offer),
+      const SizedBox(height: 8),
+      heading('My Redemptions'),
+      const SizedBox(height: 9),
+      if (redemptionHistory.isEmpty)
+        info(Icons.receipt_long_outlined, 'No redemptions yet',
+            'Redeem an item above to receive a demo redemption code.'),
+      for (final entry in redemptionHistory)
+        Card(child: ListTile(leading: const Icon(Icons.verified, color: green),
+          title: Text(entry.offer.name),
+          subtitle: Text('${entry.code} • ${entry.time.day}/${entry.time.month} '
+              '${entry.time.hour.toString().padLeft(2, '0')}:'
+              '${entry.time.minute.toString().padLeft(2, '0')}'),
+          trailing: Text('-${entry.offer.cost} pts',
+              style: const TextStyle(fontWeight: FontWeight.bold)))),
+      const SizedBox(height: 10),
+      heading('Recycling Points History'),
+      if (!jobs.any((job) => job.credited))
+        info(Icons.recycling_rounded, 'No verified pickups yet',
+            'Complete a recycling pickup and confirm the weight in Ops.'),
+      for (final job in jobs.where((job) => job.credited))
+        info(Icons.check_circle_outline, '${job.id}: +${job.points} points',
+            '${job.verifiedKg.toStringAsFixed(1)} kg verified recycling'),
+      const Padding(padding: EdgeInsets.symmetric(vertical: 14),
+        child: Text('Hackathon simulation only: offers, inventory, points, '
+            'and redemption codes are not connected to real merchants. '
+            'All data resets when the app reloads.',
+            style: TextStyle(fontSize: 11, color: Colors.black54))),
+    ]);
+  }
 
   Widget operatorPage() {
     final active = jobs.where((j) => j.stage != JobStage.completed).length;

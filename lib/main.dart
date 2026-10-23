@@ -1,658 +1,593 @@
 import 'package:flutter/material.dart';
 
+// BinGo — hackathon demo. All data and hardware events are simulated locally.
 void main() => runApp(const BinGoApp());
 
-const forest = Color(0xFF176B49);
-const dark = Color(0xFF123B30);
-const mint = Color(0xFFE8F5EC);
-const pageBg = Color(0xFFF5F8F5);
+const green = Color(0xFF18794B);
+const deep = Color(0xFF143D30);
+const pale = Color(0xFFE9F6ED);
+const canvas = Color(0xFFF5F8F5);
 
-enum WasteKind { domestic, recycle }
-enum PickupStage { requested, assigned, collecting, atHub, completed }
+enum WasteType { general, recycling, organic }
+enum JobStage { requested, dispatched, arrived, collected, atHub, completed }
 
-class Pickup {
-  Pickup({required this.id, required this.type, required this.address,
-    required this.amount, required this.material, required this.createdAt});
+extension WasteDetails on WasteType {
+  String get title => switch (this) {
+    WasteType.general => 'General',
+    WasteType.recycling => 'Recycling',
+    WasteType.organic => 'Organic',
+  };
+  String get malay => switch (this) {
+    WasteType.general => 'Sisa Domestik',
+    WasteType.recycling => 'Kitar Semula',
+    WasteType.organic => 'Sisa Organik',
+  };
+  String get description => switch (this) {
+    WasteType.general => 'Non-recyclable household waste',
+    WasteType.recycling => 'Clean plastic, paper, metal or glass',
+    WasteType.organic => 'Food scraps and garden waste',
+  };
+  String get destination => switch (this) {
+    WasteType.general => 'Domestic Waste Hub',
+    WasteType.recycling => 'Recycling Hub',
+    WasteType.organic => 'Organic / Compost Hub',
+  };
+  IconData get icon => switch (this) {
+    WasteType.general => Icons.delete_outline_rounded,
+    WasteType.recycling => Icons.recycling_rounded,
+    WasteType.organic => Icons.eco_rounded,
+  };
+  Color get color => switch (this) {
+    WasteType.general => const Color(0xFF64748B),
+    WasteType.recycling => const Color(0xFF16864E),
+    WasteType.organic => const Color(0xFFC28A32),
+  };
+}
+
+String stageText(JobStage s) => switch (s) {
+  JobStage.requested => 'Request received',
+  JobStage.dispatched => 'Autobin dispatched',
+  JobStage.arrived => 'Autobin at your house',
+  JobStage.collected => 'Waste collected',
+  JobStage.atHub => 'Arrived at collection hub',
+  JobStage.completed => 'Delivery completed',
+};
+
+class CollectionJob {
+  CollectionJob({required this.id, required this.type, required this.address,
+    required this.kg, required this.material, required this.created});
   final String id;
-  final WasteKind type;
+  final WasteType type;
   final String address;
-  final double amount;
+  final double kg;
   final String material;
-  final DateTime createdAt;
-  PickupStage stage = PickupStage.requested;
-  bool verified = false;
-  bool rejected = false;
-  bool rewarded = false;
-  double? verifiedKg; // Hub staff-confirmed weight; never trust the resident estimate for rewards.
-  String get destination => type == WasteKind.recycle
-      ? 'Recycling Hub' : 'Domestic Waste Hub';
-  int get points => type == WasteKind.recycle && verifiedKg != null
-      ? (verifiedKg! * 10).round() : 0;
-}
-
-String stageName(PickupStage s) {
-  switch (s) {
-    case PickupStage.requested: return 'Requested';
-    case PickupStage.assigned: return 'Runner assigned';
-    case PickupStage.collecting: return 'On the way';
-    case PickupStage.atHub: return 'At collection hub';
-    case PickupStage.completed: return 'Completed';
-  }
-}
-
-String when(DateTime d) {
-  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-  final m = d.minute.toString().padLeft(2, '0');
-  return '$h:$m ${d.hour >= 12 ? 'PM' : 'AM'}';
+  final DateTime created;
+  JobStage stage = JobStage.requested;
+  bool scanned = false;
+  bool approved = false;
+  bool credited = false;
+  double verifiedKg = 0;
+  int get points => type == WasteType.recycling && approved
+      ? (verifiedKg * 10).round() : 0;
 }
 
 class BinGoApp extends StatelessWidget {
   const BinGoApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'BinGo • Township Waste Collection',
+    title: 'BinGo | Township for Tomorrow',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: pageBg,
-      colorScheme: ColorScheme.fromSeed(seedColor: forest, primary: forest),
-      appBarTheme: const AppBarTheme(backgroundColor: pageBg, foregroundColor: dark,
-        elevation: 0, centerTitle: false),
+      scaffoldBackgroundColor: canvas,
+      colorScheme: ColorScheme.fromSeed(seedColor: green),
+      appBarTheme: const AppBarTheme(backgroundColor: canvas, foregroundColor: deep),
       filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
-        backgroundColor: forest, foregroundColor: Colors.white,
+        backgroundColor: green, foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)))),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)))),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(13))),
       cardTheme: CardThemeData(color: Colors.white, elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
     ),
-    home: const BinGoShell(),
+    home: const BinGoDemo(),
   );
 }
 
-class BinGoShell extends StatefulWidget {
-  const BinGoShell({super.key});
+class BinGoDemo extends StatefulWidget {
+  const BinGoDemo({super.key});
   @override
-  State<BinGoShell> createState() => _BinGoShellState();
+  State<BinGoDemo> createState() => _BinGoDemoState();
 }
 
-class _BinGoShellState extends State<BinGoShell> {
+class _BinGoDemoState extends State<BinGoDemo> {
   int tab = 0;
-  int nextId = 1001;
-  int totalPoints = 120;
-  final List<Pickup> pickups = [];
-  final addressController = TextEditingController(text: 'No. 12, Jalan Harmoni 3, EcoTown');
-  WasteKind selectedType = WasteKind.recycle;
-  String selectedMaterial = 'Mixed recyclables';
-  double selectedKg = 2;
-  bool binFull = true;
-  bool nfcUnlocked = false;
-  bool robotCameraPassed = false;
-  bool lidarEnabled = true;
-  bool robotCharging = false;
-  int batteryPercent = 84;
-  String robotMode = 'Human-supervised demo';
-  final String robotId = 'AB-01';
+  int nextNumber = 1001;
+  int greenPoints = 0;
+  WasteType chosen = WasteType.recycling;
+  String material = 'Mixed recyclables';
+  double weight = 2.0;
+  bool full = true;
+  bool unlocked = false;
+  bool cameraSimulated = false;
+  final address = TextEditingController(text: 'No. 12, Jalan Harmoni 3, EcoTown');
+  final jobs = <CollectionJob>[];
+
+  CollectionJob? get current => jobs.isEmpty ? null : jobs.first;
 
   @override
-  void dispose() { addressController.dispose(); super.dispose(); }
+  void dispose() { address.dispose(); super.dispose(); }
 
-  void toast(String message) {
+  void message(String text) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message),
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text),
       behavior: SnackBarBehavior.floating));
   }
 
-  void submitPickup() {
-    final address = addressController.text.trim();
-    if (address.isEmpty) { toast('Please enter your pickup address.'); return; }
+  void request() {
+    if (address.text.trim().isEmpty) {
+      message('Please enter a collection address.');
+      return;
+    }
     setState(() {
-      pickups.insert(0, Pickup(id: 'BG-${nextId++}', type: selectedType,
-        address: address, amount: selectedKg,
-        material: selectedType == WasteKind.recycle ? selectedMaterial : 'General waste',
-        createdAt: DateTime.now()));
+      jobs.insert(0, CollectionJob(
+        id: 'BG-${nextNumber++}', type: chosen, address: address.text.trim(),
+        kg: weight, material: chosen == WasteType.recycling ? material :
+          chosen == WasteType.organic ? 'Food / garden scraps' : 'General household waste',
+        created: DateTime.now(),
+      ));
+      unlocked = false;
+      cameraSimulated = false;
       tab = 1;
     });
-    toast('Pickup requested! Township runner will be assigned.');
+    message('${chosen.title} pickup requested! Open Autobin to simulate the journey.');
   }
 
-  void moveForward(Pickup p) {
-    if (p.rejected) return;
-    if (p.stage == PickupStage.completed) return;
-    if (p.stage == PickupStage.atHub && p.type == WasteKind.recycle && p.verifiedKg == null) {
-      toast('Hub staff must confirm the verified recycling weight first.'); return;
+  void advance(CollectionJob job) {
+    if (job.stage == JobStage.completed) return;
+    if (job.stage == JobStage.arrived && !unlocked && identical(job, current)) {
+      message('First simulate QR / NFC access in the Autobin tab.');
+      return;
     }
-    if (p.stage == PickupStage.collecting && p.type == WasteKind.recycle && !p.verified) {
-      toast('Verify the recycling load first in the operator panel.'); return;
+    if (job.stage == JobStage.collected && !job.scanned) {
+      message('First run the simulated camera waste check in the Operator tab.');
+      return;
+    }
+    if (job.stage == JobStage.collected && !job.approved) {
+      message('Waste needs to be accepted before reaching the hub.');
+      return;
+    }
+    if (job.stage == JobStage.atHub && job.type == WasteType.recycling &&
+        job.verifiedKg <= 0) {
+      message('Confirm the recycling weight in Operator before completing.');
+      return;
     }
     setState(() {
-      p.stage = PickupStage.values[p.stage.index + 1];
-      if (p.stage == PickupStage.completed && !p.rewarded && p.type == WasteKind.recycle) {
-        totalPoints += p.points;
-        p.rewarded = true;
+      job.stage = JobStage.values[job.stage.index + 1];
+      if (job.stage == JobStage.completed && job.type == WasteType.recycling &&
+          !job.credited) {
+        greenPoints += job.points;
+        job.credited = true;
       }
     });
-    toast(p.stage == PickupStage.completed
-      ? 'Collection completed${p.type == WasteKind.recycle ? ' • +${p.points} points' : ''}!'
-      : 'Request updated: ${stageName(p.stage)}');
+    message(stageText(job.stage));
   }
 
-  void confirmHubWeight(Pickup p) {
-    if (p.type != WasteKind.recycle || p.stage != PickupStage.atHub || p.rejected) return;
-    setState(() => p.verifiedKg = p.amount);
-    toast('Recycling hub verified ${p.verifiedKg!.toStringAsFixed(1)} kg. Rewards ready on completion.');
+  void inspect(CollectionJob job, bool accept) {
+    setState(() {
+      job.scanned = true;
+      job.approved = accept;
+      if (!accept) job.verifiedKg = 0;
+    });
+    message(accept ? 'Demo inspection: ${job.type.title} waste accepted.' :
+      'Demo inspection: contamination flagged. Recheck materials.');
   }
 
-  void verify(Pickup p, bool valid) {
-    setState(() { p.verified = valid; p.rejected = !valid; });
-    toast(valid ? 'Demo CV check: recyclable waste approved.'
-      : 'Demo CV check: contamination flagged. Ask resident to separate waste.');
+  void confirmWeight(CollectionJob job) {
+    if (!job.approved || job.stage != JobStage.atHub) return;
+    setState(() => job.verifiedKg = job.kg);
+    message('Demo hub verified ${job.kg.toStringAsFixed(1)} kg.');
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [homePage(), trackingPage(), autobinPage(), rewardsPage(), operatorPage()];
+    final pages = [residentPage(), trackingPage(), autobinPage(),
+      rewardsPage(), operatorPage()];
     return Scaffold(
       appBar: AppBar(
-        title: Row(children: [
-          Container(padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: mint, borderRadius: BorderRadius.circular(11)),
-            child: const Icon(Icons.recycling_rounded, color: forest, size: 26)),
-          const SizedBox(width: 10),
-          const Text('BinGo', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900,
-              letterSpacing: -1)),
-          const Text('  •  EcoTown', style: TextStyle(fontSize: 12,
-            fontWeight: FontWeight.w500, color: Colors.black54)),
+        title: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.recycling_rounded, color: green, size: 32),
+          SizedBox(width: 7),
+          Text('BinGo', style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900)),
         ]),
-        actions: [IconButton(tooltip: 'Prototype information',
-          onPressed: () => showDialog<void>(context: context,
-            builder: (_) => AlertDialog(title: const Text('Hackathon prototype'),
-              content: const Text('This is a local Flutter demo. NFC, AI camera, GPS/LiDAR, route positions, battery and robot movements are simulated; no physical Autobin, GPS, NFC or backend is connected. Rewards use operator verification and hub-confirmed weight.'),
-              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))])),
-          icon: const Icon(Icons.info_outline_rounded))],
+        actions: [IconButton(icon: const Icon(Icons.info_outline),
+          tooltip: 'Prototype information', onPressed: () => showDialog<void>(
+            context: context, builder: (context) => AlertDialog(
+              title: const Text('Hackathon demonstration'),
+              content: const Text('This is a clickable software prototype. Autobin navigation, GPS/LiDAR, QR/NFC access, AI camera inspection, weights and rewards are SIMULATED. No physical robot or shared backend is connected. Organic composting is the proposed third stream.'),
+              actions: [TextButton(onPressed: () => Navigator.pop(context),
+                child: const Text('OK'))]))),
+          const SizedBox(width: 8)],
       ),
-      body: SafeArea(child: IndexedStack(index: tab, children: pages)),
+      body: SafeArea(child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: IndexedStack(index: tab, children: pages)))),
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
-        onDestinationSelected: (index) => setState(() => tab = index),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: (i) => setState(() => tab = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.local_shipping_outlined),
-            selectedIcon: Icon(Icons.local_shipping), label: 'Track'),
-          NavigationDestination(icon: Icon(Icons.smart_toy_outlined),
-            selectedIcon: Icon(Icons.smart_toy), label: 'Autobin'),
-          NavigationDestination(icon: Icon(Icons.stars_outlined),
-            selectedIcon: Icon(Icons.stars), label: 'Rewards'),
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard), label: 'Operator'),
+          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.route_outlined), label: 'Track'),
+          NavigationDestination(icon: Icon(Icons.smart_toy_outlined), label: 'Autobin'),
+          NavigationDestination(icon: Icon(Icons.stars_outlined), label: 'Rewards'),
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Ops'),
         ],
       ),
     );
   }
 
-  Widget homePage() => ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-    children: [
-      Container(padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [dark, forest],
-            begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(24)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('A cleaner township starts here',
-            style: TextStyle(color: Colors.white, fontSize: 26, height: 1.15,
-              fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          Text('On-demand doorstep collection, without waiting for the weekly truck.',
-            style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 14)),
-          const SizedBox(height: 16),
-          const Row(children: [Icon(Icons.electric_rickshaw, color: Colors.white70, size: 21),
-            SizedBox(width: 8), Text('Human-supervised Autobin / electric buggy prototype',
-            style: TextStyle(color: Colors.white, fontSize: 12))]),
-        ])),
-      const SizedBox(height: 24),
-      const Text('Request a pickup', style: TextStyle(fontSize: 21,
-        fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 5),
-      const Text('Choose the type of waste you want us to collect.',
-        style: TextStyle(color: Colors.black54)),
-      const SizedBox(height: 14),
-      Row(children: [
-        Expanded(child: wasteTypeCard(WasteKind.domestic, 'Domestic',
-            'Household trash', Icons.delete_outline_rounded)),
-        const SizedBox(width: 12),
-        Expanded(child: wasteTypeCard(WasteKind.recycle, 'Recycle',
-            'Earn green points', Icons.recycling_rounded)),
-      ]),
-      const SizedBox(height: 14),
-      Card(child: Padding(padding: const EdgeInsets.all(17), child:
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Pickup details', style: TextStyle(fontWeight: FontWeight.w800,
-            fontSize: 17, color: dark)),
-          const SizedBox(height: 14),
-          TextField(controller: addressController,
-            decoration: const InputDecoration(labelText: 'House / pickup location',
-              prefixIcon: Icon(Icons.location_on_outlined), border: OutlineInputBorder())),
-          const SizedBox(height: 16),
-          if (selectedType == WasteKind.recycle) ...[
-            DropdownButtonFormField<String>(initialValue: selectedMaterial,
-              decoration: const InputDecoration(labelText: 'Recyclable items',
-                border: OutlineInputBorder()),
-              items: ['Mixed recyclables', 'Plastic', 'Paper / cardboard', 'Metal', 'Glass']
-                .map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (value) => setState(() => selectedMaterial = value!)),
-            const SizedBox(height: 12),
-            const Text('You can combine approved recyclables. Sorting happens at the recycling hub.',
-              style: TextStyle(color: Colors.black54, fontSize: 12)),
-            const SizedBox(height: 12),
+  Widget residentPage() => ListView(padding: const EdgeInsets.all(18), children: [
+    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(
+      gradient: const LinearGradient(colors: [deep, green]),
+      borderRadius: BorderRadius.circular(24)),
+      child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Township for Tomorrow', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        SizedBox(height: 7),
+        Text('Waste pickup at your doorstep.', style: TextStyle(color: Colors.white,
+          fontSize: 27, fontWeight: FontWeight.w900)),
+        SizedBox(height: 9),
+        Text('Choose your waste type and call BinGo on demand.',
+          style: TextStyle(color: Colors.white70)),
+        SizedBox(height: 10),
+        Text('DEMO • Autonomous Autobin concept / human-runner-ready workflow',
+          style: TextStyle(color: Colors.white70, fontSize: 11)),
+      ])),
+    const SizedBox(height: 23),
+    heading('Select Waste Type / Pilih Jenis Sampah'),
+    const SizedBox(height: 10),
+    LayoutBuilder(builder: (context, constraints) {
+      final narrow = constraints.maxWidth < 530;
+      final cards = WasteType.values.map(wasteCard).toList();
+      return narrow ? Column(children: [for (final c in cards) Padding(
+        padding: const EdgeInsets.only(bottom: 9), child: c)]) :
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (int i = 0; i < cards.length; i++) ...[
+            if (i != 0) const SizedBox(width: 10), Expanded(child: cards[i]),
           ],
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Estimated weight', style: TextStyle(fontWeight: FontWeight.w600)),
-            Text('${selectedKg.toStringAsFixed(1)} kg',
-              style: const TextStyle(color: forest, fontWeight: FontWeight.w800))]),
-          Slider(value: selectedKg, min: .5, max: 10, divisions: 19,
-            label: '${selectedKg.toStringAsFixed(1)} kg',
-            onChanged: (value) => setState(() => selectedKg = value)),
-          SwitchListTile.adaptive(contentPadding: EdgeInsets.zero,
-            title: const Text('My bin is full'),
-            subtitle: const Text('Or request an ad-hoc pickup anytime'),
-            value: binFull, onChanged: (v) => setState(() => binFull = v)),
-          const SizedBox(height: 5),
-          SizedBox(width: double.infinity, child: FilledButton.icon(
-            icon: const Icon(Icons.send_rounded),
-            onPressed: submitPickup, label: const Text('Call BinGo / Panggil Bin'))),
-          if (selectedType == WasteKind.recycle) ...[
-            const SizedBox(height: 10),
-            Center(child: Text('Potential reward: up to ${(selectedKg * 10).round()} points (hub-verified weight only)',
-              style: const TextStyle(color: forest, fontWeight: FontWeight.w600,
-                fontSize: 12))),
-          ],
-        ]))),
-      const SizedBox(height: 15),
-      const Text('How BinGo works', style: TextStyle(fontSize: 18,
-        fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 10),
-      infoTile(Icons.touch_app_outlined, '1. Request',
-        'Choose domestic or recycling pickup at your doorstep.'),
-      infoTile(Icons.directions_car_outlined, '2. Collect',
-        'Supervised Autobin travels on approved township sidewalks.'),
-      infoTile(Icons.warehouse_outlined, '3. Deliver',
-        'Waste goes to the matching domestic or recycling hub.'),
-    ]);
-
-  Widget wasteTypeCard(WasteKind value, String name, String subtitle, IconData icon) {
-    final selected = selectedType == value;
-    return InkWell(onTap: () => setState(() => selectedType = value),
-      borderRadius: BorderRadius.circular(18),
-      child: Container(padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: selected ? mint : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: selected ? forest : Colors.black12,
-            width: selected ? 2 : 1)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 34, color: selected ? forest : Colors.blueGrey),
+        ]);
+    }),
+    const SizedBox(height: 16),
+    Card(child: Padding(padding: const EdgeInsets.all(17), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        heading('Pickup details'), const SizedBox(height: 14),
+        TextField(controller: address, decoration: const InputDecoration(
+          labelText: 'House address / Alamat rumah', prefixIcon: Icon(Icons.place_outlined))),
+        if (chosen == WasteType.recycling) ...[
           const SizedBox(height: 13),
-          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 3),
-          Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          DropdownButtonFormField<String>(
+            value: material, decoration: const InputDecoration(labelText: 'Recycling material'),
+            items: ['Mixed recyclables', 'Plastic', 'Paper / cardboard', 'Metal', 'Glass']
+              .map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+            onChanged: (v) => setState(() => material = v ?? material)),
+          const SizedBox(height: 8),
+          const Text('Accepted recyclables are sorted by workers at the recycling hub.',
+            style: TextStyle(color: Colors.black54, fontSize: 12)),
+        ],
+        const SizedBox(height: 14),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Estimated load'), Text('${weight.toStringAsFixed(1)} kg',
+            style: const TextStyle(color: green, fontWeight: FontWeight.bold)),
+        ]),
+        Slider(min: 0.5, max: 10, divisions: 19, value: weight,
+          onChanged: (v) => setState(() => weight = v)),
+        SwitchListTile.adaptive(contentPadding: EdgeInsets.zero,
+          title: const Text('My bin is full / Tong saya penuh'),
+          subtitle: const Text('Or request an ad-hoc pickup'),
+          value: full, onChanged: (v) => setState(() => full = v)),
+        SizedBox(width: double.infinity, child: FilledButton.icon(
+          onPressed: request, icon: const Icon(Icons.smart_toy_outlined),
+          label: const Text('Call BinGo / Panggil BinGo'))),
+        if (chosen == WasteType.recycling) Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text('Potential reward: ${(weight * 10).round()} points (after hub verification)',
+            textAlign: TextAlign.center, style: const TextStyle(color: green, fontSize: 12))),
+      ]))),
+    const SizedBox(height: 17),
+    heading('How it works'),
+    info(Icons.touch_app_outlined, '1. Request', 'Resident chooses General, Recycling or Organic.'),
+    info(Icons.smart_toy_outlined, '2. Collect', 'Simulated Autobin travels via township-approved paths.'),
+    info(Icons.warehouse_outlined, '3. Deliver', 'Waste reaches its matching hub. Trucks stay at central stations.'),
+  ]);
+
+  Widget wasteCard(WasteType type) {
+    final picked = chosen == type;
+    return InkWell(onTap: () => setState(() => chosen = type),
+      borderRadius: BorderRadius.circular(17),
+      child: Container(width: double.infinity, padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(color: picked ? pale : Colors.white,
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: picked ? green : Colors.black12, width: picked ? 2 : 1)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Icon(type.icon, size: 31, color: type.color),
+            const Spacer(), if (picked) const Icon(Icons.check_circle, color: green)]),
+          const SizedBox(height: 9),
+          Text(type.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          Text(type.malay, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+          const SizedBox(height: 5),
+          Text(type.description, style: const TextStyle(fontSize: 12, color: Colors.black54)),
         ])));
   }
 
-  Widget trackingPage() => ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 25),
-    children: [
-      const Text('My collections', style: TextStyle(fontSize: 23,
-        fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 6),
-      const Text('Follow each pickup from request to the central hub.',
-        style: TextStyle(color: Colors.black54)),
-      const SizedBox(height: 18),
-      if (pickups.isEmpty) emptyState(Icons.local_shipping_outlined,
-        'No pickups yet', 'Go to Home to request your first collection.'),
-      for (final p in pickups) pickupCard(p),
-    ]);
+  Widget trackingPage() => ListView(padding: const EdgeInsets.all(18), children: [
+    heading('Track your collection'),
+    const Text('Track each stage of the simulated Autobin journey.',
+      style: TextStyle(color: Colors.black54)),
+    const SizedBox(height: 17),
+    if (jobs.isEmpty) empty('No pickups yet', 'Create one on Home to start the demo.'),
+    for (final j in jobs) Card(margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(padding: const EdgeInsets.all(17), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Icon(j.type.icon, color: j.type.color), const SizedBox(width: 9),
+            Expanded(child: Text('${j.type.title} • ${j.id}', style:
+              const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+            Text('${j.kg.toStringAsFixed(1)} kg')]),
+          const SizedBox(height: 8), Text(j.address),
+          const SizedBox(height: 13),
+          LinearProgressIndicator(value: (j.stage.index + 1) / JobStage.values.length,
+            minHeight: 9, borderRadius: BorderRadius.circular(8), backgroundColor: pale),
+          const SizedBox(height: 9),
+          Text(stageText(j.stage), style: const TextStyle(color: green,
+            fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          routeVisual(j),
+          const SizedBox(height: 8),
+          Text('Destination: ${j.type.destination}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (j.type == WasteType.recycling)
+            Text('Green Points: ${j.credited ? '+${j.points} credited' : 'Pending hub verification'}',
+              style: const TextStyle(color: green, fontSize: 12)),
+        ]))),
+  ]);
 
-  Widget pickupCard(Pickup p) => Card(margin: const EdgeInsets.only(bottom: 14),
-    child: Padding(padding: const EdgeInsets.all(18), child:
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(p.type == WasteKind.recycle ? Icons.recycling : Icons.delete_outline,
-            color: forest),
-          const SizedBox(width: 9),
-          Expanded(child: Text('${p.type == WasteKind.recycle ? 'Recycling' : 'Domestic'} • ${p.id}',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-          Text(when(p.createdAt), style: const TextStyle(color: Colors.black45, fontSize: 12)),
-        ]),
-        const SizedBox(height: 12),
-        Text('${p.amount.toStringAsFixed(1)} kg • ${p.material}',
-          style: const TextStyle(color: Colors.black54)),
-        const SizedBox(height: 5),
-        Text(p.address, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-        const SizedBox(height: 15),
-        LinearProgressIndicator(value: (p.stage.index + 1) / PickupStage.values.length,
-          minHeight: 8, borderRadius: BorderRadius.circular(8),
-          backgroundColor: mint),
-        const SizedBox(height: 10),
-        Row(children: [const Icon(Icons.circle, color: forest, size: 10),
-          const SizedBox(width: 7),
-          Expanded(child: Text(p.rejected ? 'Flagged: contamination detected' : stageName(p.stage),
-            style: TextStyle(fontWeight: FontWeight.bold,
-              color: p.rejected ? Colors.red : forest))),
-        ]),
-        const SizedBox(height: 9),
-        Text('Destination: ${p.destination}', style: const TextStyle(fontSize: 12)),
-        if (p.type == WasteKind.recycle)
-          Text('Rewards: ${p.rewarded ? '+${p.points} points credited' : 'pending hub weight verification'}',
-            style: const TextStyle(color: forest, fontSize: 12)),
-        const SizedBox(height: 10),
-        Container(padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: pageBg, borderRadius: BorderRadius.circular(12)),
-          child: const Row(children: [Icon(Icons.route_outlined, color: forest),
-            SizedBox(width: 9),
-            Expanded(child: Text('Demo route: Central Hub → EcoTown walkway → Your house → Matching waste hub',
-              style: TextStyle(fontSize: 12)))])),
-      ])));
+  Widget routeVisual(CollectionJob j) => Container(padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(14)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('SIMULATED TOWNSHIP ROUTE', style: TextStyle(color: deep,
+        fontWeight: FontWeight.w800, fontSize: 11)),
+      const SizedBox(height: 13),
+      Row(children: [
+        routeStop(Icons.warehouse_outlined, 'Base', true),
+        const Expanded(child: Divider(color: green, thickness: 2)),
+        routeStop(Icons.home_outlined, 'House', j.stage.index >= 2),
+        const Expanded(child: Divider(color: green, thickness: 2)),
+        routeStop(j.type.icon, 'Hub', j.stage.index >= 4),
+      ]),
+      const SizedBox(height: 8),
+      const Text('Illustrative route only • No live GPS / ETA',
+        style: TextStyle(fontSize: 10, color: Colors.black54)),
+    ]));
+
+  Widget routeStop(IconData icon, String text, bool active) => Column(children: [
+    CircleAvatar(radius: 19, backgroundColor: active ? green : Colors.white,
+      child: Icon(icon, size: 18, color: active ? Colors.white : deep)),
+    const SizedBox(height: 5), Text(text, style: const TextStyle(fontSize: 11)),
+  ]);
 
   Widget autobinPage() {
-    final active = pickups.where((p) => !p.rejected && p.stage != PickupStage.completed).toList();
-    final chosen = active.isEmpty ? null : active.first;
-    final domesticLoads = pickups.where((p) => p.type == WasteKind.domestic &&
-      p.stage == PickupStage.collecting).length;
-    final recycleLoads = pickups.where((p) => p.type == WasteKind.recycle &&
-      p.stage == PickupStage.collecting).length;
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 28), children: [
-      const Text('Autobin control centre', style: TextStyle(fontSize: 23,
-        fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 5),
-      const Text('Prototype simulation / Simulasi robot',
+    final j = current;
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      heading('Meet your Autobin'),
+      const Text('Autonomous smart collection concept • interactive demo',
         style: TextStyle(color: Colors.black54)),
       const SizedBox(height: 16),
-      Container(padding: const EdgeInsets.all(19),
-        decoration: BoxDecoration(gradient: const LinearGradient(colors: [dark, forest]),
-          borderRadius: BorderRadius.circular(22)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [Icon(Icons.smart_toy_outlined, color: Colors.white, size: 35),
-            SizedBox(width: 11), Expanded(child: Text('Autobin AB-01 • Dual-compartment',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)))]),
-          const SizedBox(height: 14),
-          Text('$batteryPercent% battery • ${robotCharging ? 'Docked / charging' : robotMode}',
-            style: const TextStyle(color: Colors.white)),
-          const SizedBox(height: 9),
-          LinearProgressIndicator(value: batteryPercent / 100, minHeight: 9,
-            backgroundColor: Colors.white24, color: Colors.lightGreenAccent,
-            borderRadius: BorderRadius.circular(10)),
-          const SizedBox(height: 12),
-          const Text('GPS / LiDAR collision sensing and autonomous navigation are conceptual, not connected.',
-            style: TextStyle(fontSize: 12, color: Colors.white70)),
-        ])),
-      const SizedBox(height: 16),
-      Row(children: [
-        Expanded(child: compartmentCard('Domestic / Sisa Domestik',
-          Icons.delete_outline_rounded, domesticLoads, Colors.blueGrey)),
-        const SizedBox(width: 10),
-        Expanded(child: compartmentCard('Recycle / Kitar Semula',
-          Icons.recycling_rounded, recycleLoads, forest)),
-      ]),
-      const SizedBox(height: 17),
-      const Text('Resident access • NFC / QR demo',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 8),
-      Card(child: Padding(padding: const EdgeInsets.all(15), child: Column(children: [
-        Row(children: [Icon(nfcUnlocked ? Icons.lock_open : Icons.lock_outline, color: forest),
-          const SizedBox(width: 10), Expanded(child: Text(nfcUnlocked
-            ? 'Access granted (simulation)' : 'Compartments locked',
-            style: const TextStyle(fontWeight: FontWeight.w700)))]),
-        const SizedBox(height: 12),
-        SizedBox(width: double.infinity, child: FilledButton.icon(
-          onPressed: () { setState(() => nfcUnlocked = !nfcUnlocked);
-            toast(nfcUnlocked ? 'Demo NFC scan approved; lid unlocked.' : 'Autobin locked.'); },
-          icon: const Icon(Icons.nfc),
-          label: Text(nfcUnlocked ? 'Lock compartments' : 'Simulate NFC / QR scan'))),
-      ]))),
-      const SizedBox(height: 15),
-      const Text('AI camera & waste verification',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 8),
-      Card(child: Padding(padding: const EdgeInsets.all(15), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('A future camera can check whether an item is recyclable. For now, this uses a manual simulated result.',
-            style: TextStyle(color: Colors.black54, fontSize: 12)),
-          const SizedBox(height: 12),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            OutlinedButton.icon(onPressed: () { setState(() => robotCameraPassed = true);
-              toast('Simulated scan: recyclable item accepted.'); },
-              icon: const Icon(Icons.check_circle_outline), label: const Text('Demo: recyclable')),
-            OutlinedButton.icon(onPressed: () { setState(() => robotCameraPassed = false);
-              toast('Simulated scan: domestic/contaminated waste detected.'); },
-              icon: const Icon(Icons.warning_amber), label: const Text('Demo: contaminated')),
+      Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [deep, green]),
+        borderRadius: BorderRadius.circular(22)),
+        child: Column(children: [
+          const Icon(Icons.smart_toy_rounded, size: 74, color: Colors.white),
+          const SizedBox(height: 7),
+          const Text('BinGo Autobin 01', style: TextStyle(fontSize: 23,
+            color: Colors.white, fontWeight: FontWeight.w800)),
+          const Text('GPS + LiDAR navigation • future hardware integration',
+            textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 13),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            const RobotMetric('Battery', '85%', Icons.battery_5_bar),
+            robotMetric('Navigation', 'Demo', Icons.route_outlined),
+            robotMetric('Mode', 'Simulated', Icons.settings_remote_outlined),
           ]),
-          const SizedBox(height: 8),
-          Text(robotCameraPassed ? 'Last demo result: recyclable ✓' : 'Last demo result: not approved / no scan',
-            style: const TextStyle(color: forest, fontWeight: FontWeight.w600)),
-        ]))),
-      const SizedBox(height: 15),
-      const Text('Township walkway routing',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 8),
-      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [Icon(Icons.route, color: forest), SizedBox(width: 8),
-            Text('Simulated route / Laluan demo',
-              style: TextStyle(fontWeight: FontWeight.w800))]),
+        ])),
+      const SizedBox(height: 17),
+      heading('Three waste streams'),
+      const SizedBox(height: 9),
+      for (final w in WasteType.values) info(w.icon,
+        '${w.title} / ${w.malay}', '${w.description} → ${w.destination}'),
+      const Text('Concept note: the robot illustration has dual compartments. This demo models a third organic collection stream as a separate collection trip; it does not claim three physical compartments.',
+        style: TextStyle(fontSize: 11, color: Colors.black54)),
+      const SizedBox(height: 18),
+      heading('Robot interaction simulator'),
+      const SizedBox(height: 9),
+      if (j == null) empty('No active delivery', 'Request a collection on Home.'),
+      if (j != null) Card(child: Padding(padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${j.id} • ${j.type.title}', style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6), Text(stageText(j.stage)),
           const SizedBox(height: 11),
-          const Text('Central station  →  approved sidewalks  →  resident home  →  appropriate waste hub',
-            style: TextStyle(height: 1.5)),
-          const SizedBox(height: 10),
-          Text(chosen == null ? 'No active pickup. Make a request to begin.'
-            : 'Current job: ${chosen.id} • ${stageName(chosen.stage)} • ${chosen.destination}',
-            style: const TextStyle(fontSize: 12, color: forest)),
-          const SizedBox(height: 9),
-          const Text('Routing, robot position and ETA are not live. An operator supervises all simulated travel.',
+          routeVisual(j),
+          const SizedBox(height: 12),
+          if (j.stage == JobStage.arrived) SizedBox(width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: unlocked ? null : () { setState(() => unlocked = true);
+                message('Demo QR/NFC approved — compartment unlocked.'); },
+              icon: const Icon(Icons.qr_code_scanner),
+              label: Text(unlocked ? 'Demo access granted' : 'Simulate QR / NFC unlock'))),
+          if (j.stage == JobStage.collected) const Text(
+            'Material checking happens on the Operator tab before hub arrival.',
             style: TextStyle(fontSize: 12, color: Colors.black54)),
+          if (j.stage == JobStage.completed) const Text('Autobin returned to base (demo).',
+            style: TextStyle(color: green, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          if (j.stage != JobStage.completed)
+            SizedBox(width: double.infinity, child: FilledButton.icon(
+              onPressed: () => advance(j), icon: const Icon(Icons.play_arrow),
+              label: Text(switch (j.stage) {
+                JobStage.requested => 'Dispatch Autobin (demo)',
+                JobStage.dispatched => 'Arrive at house',
+                JobStage.arrived => 'Confirm pickup',
+                JobStage.collected => 'Travel to matching hub',
+                JobStage.atHub => 'Complete hub delivery',
+                JobStage.completed => 'Completed',
+              }))),
         ]))),
-      const SizedBox(height: 15),
-      const Text('Central transfer / Rumah sampah',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 8),
-      infoTile(Icons.delete_outline, 'Domestic Waste Hub',
-        'Domestic compartment unloads here; municipal collection happens at the hub.'),
-      infoTile(Icons.recycling_rounded, 'Recycling Hub',
-        'Recycling compartment unloads here; staff sort and weigh accepted material.'),
-      const SizedBox(height: 10),
-      OutlinedButton.icon(onPressed: () {
-        setState(() { robotCharging = !robotCharging;
-          if (robotCharging) batteryPercent = 100; });
-        toast(robotCharging ? 'Demo: Autobin docked and charged.' : 'Demo: Autobin undocked.');
-      }, icon: const Icon(Icons.battery_charging_full),
-        label: Text(robotCharging ? 'Undock Autobin (demo)' : 'Simulate docking / charging')),
+      const SizedBox(height: 12),
+      info(Icons.visibility_outlined, 'AI Camera / Computer Vision',
+        'Operator simulates identification of acceptable and contaminated materials.'),
+      info(Icons.sensors_outlined, 'Sensors and mobility',
+        'LiDAR, obstacle avoidance and autonomous driving are concept features, not connected hardware.'),
     ]);
   }
 
-  Widget compartmentCard(String title, IconData icon, int count, Color color) =>
-    Container(padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: color.withValues(alpha: .3))),
+  Widget rewardsPage() => ListView(padding: const EdgeInsets.all(18), children: [
+    heading('Green Points / Mata Ganjaran'),
+    const SizedBox(height: 12),
+    Container(padding: const EdgeInsets.all(26), decoration: BoxDecoration(
+      gradient: const LinearGradient(colors: [green, deep]),
+      borderRadius: BorderRadius.circular(23)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, color: color, size: 32), const SizedBox(height: 9),
-        Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 5),
-        Text('$count collecting', style: const TextStyle(fontSize: 11, color: Colors.black54)),
-      ]));
-
-  Widget rewardsPage() => ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 25),
-    children: [
-      const Text('Green rewards', style: TextStyle(fontSize: 23,
-        fontWeight: FontWeight.w800, color: dark)),
-      const SizedBox(height: 13),
-      Container(padding: const EdgeInsets.all(25),
-        decoration: BoxDecoration(gradient: const LinearGradient(colors: [forest, dark]),
-          borderRadius: BorderRadius.circular(22)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.stars_rounded, color: Colors.amberAccent, size: 33),
-          const SizedBox(height: 12),
-          const Text('Your green points', style: TextStyle(color: Colors.white70)),
-          Text('$totalPoints', style: const TextStyle(color: Colors.white, fontSize: 43,
-            fontWeight: FontWeight.w900)),
-          const Text('10 demo points per kg weighed and approved at the recycling hub',
-            style: TextStyle(color: Colors.white70, fontSize: 12)),
-        ])),
-      const SizedBox(height: 20),
-      const Text('How to earn', style: TextStyle(fontSize: 19,
-        color: dark, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 12),
-      infoTile(Icons.recycling, 'Recycle responsibly',
-        'Request a recycling pickup for clean, accepted materials.'),
-      infoTile(Icons.verified_outlined, 'Get your load verified',
-        'The operator checks materials and hub staff confirms accepted weight.'),
-      infoTile(Icons.stars_outlined, 'Receive green points',
-        'Points are credited after the collection is completed.'),
-      const SizedBox(height: 20),
-      const Text('Reward ideas • demo only', style: TextStyle(fontSize: 19,
-        color: dark, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 12),
-      rewardTile('EcoTown reusable tote', '250 points', Icons.shopping_bag_outlined),
-      rewardTile('Community garden voucher', '500 points', Icons.park_outlined),
-      const SizedBox(height: 8),
-      const Text('Redemption is a future feature. These are illustrative rewards, not live offers.',
-        style: TextStyle(color: Colors.black54, fontSize: 12)),
-    ]);
-
-  Widget rewardTile(String title, String price, IconData icon) => Card(
-    child: ListTile(leading: Icon(icon, color: forest, size: 30),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(price), trailing: const Icon(Icons.lock_outline)));
+        const Icon(Icons.stars_rounded, size: 40, color: Colors.amberAccent),
+        const SizedBox(height: 8),
+        Text('$greenPoints', style: const TextStyle(color: Colors.white,
+          fontSize: 48, fontWeight: FontWeight.w900)),
+        const Text('Verified recycling points', style: TextStyle(color: Colors.white70)),
+      ])),
+    const SizedBox(height: 17),
+    info(Icons.recycling, 'Earn 10 points per verified kg',
+      'Only recycling loads earn points after accepted inspection and hub verification.'),
+    info(Icons.delete_outline, 'General waste', 'No rewards for ordinary domestic waste.'),
+    info(Icons.eco_outlined, 'Organic waste',
+      'Diverted to a proposed composting hub; organic rewards are not enabled.'),
+    const SizedBox(height: 12),
+    heading('Reward concepts • not redeemable in this demo'),
+    info(Icons.shopping_bag_outlined, '250 points', 'Reusable tote bag'),
+    info(Icons.park_outlined, '500 points', 'Community garden voucher'),
+    if (jobs.any((j) => j.credited)) ...[
+      const SizedBox(height: 10), heading('Reward history'),
+      for (final j in jobs.where((j) => j.credited))
+        info(Icons.check_circle_outline, '${j.id}: +${j.points} points',
+          '${j.verifiedKg.toStringAsFixed(1)} kg verified recycling'),
+    ],
+  ]);
 
   Widget operatorPage() {
-    final active = pickups.where((p) => p.stage != PickupStage.completed && !p.rejected).length;
-    final finished = pickups.where((p) => p.stage == PickupStage.completed).length;
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 28), children: [
-      const Text('Township operations', style: TextStyle(fontSize: 23,
-        color: dark, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 6),
-      const Text('Demo dispatch panel • human-supervised Autobin collection',
+    final active = jobs.where((j) => j.stage != JobStage.completed).length;
+    final done = jobs.where((j) => j.stage == JobStage.completed).length;
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      heading('Township operations / JMB'),
+      const Text('Operator-led verification, dispatch and central hubs',
         style: TextStyle(color: Colors.black54)),
-      const SizedBox(height: 16),
+      const SizedBox(height: 15),
       Row(children: [
-        Expanded(child: metricCard('Requests', '${pickups.length}', Icons.receipt_long)),
-        const SizedBox(width: 10),
-        Expanded(child: metricCard('Active', '$active', Icons.electric_rickshaw)),
-        const SizedBox(width: 10),
-        Expanded(child: metricCard('Done', '$finished', Icons.check_circle_outline)),
+        Expanded(child: stat('${jobs.length}', 'Requests')),
+        const SizedBox(width: 8),
+        Expanded(child: stat('$active', 'Active')),
+        const SizedBox(width: 8),
+        Expanded(child: stat('$done', 'Delivered')),
       ]),
-      const SizedBox(height: 18),
-      Card(child: Padding(padding: const EdgeInsets.all(15),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Collection hubs', style: TextStyle(fontSize: 16,
-            fontWeight: FontWeight.w800, color: dark)),
-          const SizedBox(height: 13),
-          hubRow(Icons.delete_outline, 'Domestic Waste Hub',
-            pickups.where((p) => p.type == WasteKind.domestic &&
-              p.stage.index >= PickupStage.atHub.index).length),
-          const Divider(),
-          hubRow(Icons.recycling, 'Recycling Hub',
-            pickups.where((p) => p.type == WasteKind.recycle &&
-              p.stage.index >= PickupStage.atHub.index).length),
-        ]))),
-      const SizedBox(height: 19),
-      const Text('Dispatch queue', style: TextStyle(fontSize: 19,
-        color: dark, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 10),
-      if (pickups.isEmpty) emptyState(Icons.inbox_outlined,
-        'No jobs in the queue', 'Create a request on Home to test dispatch.'),
-      for (final p in pickups) Card(margin: const EdgeInsets.only(bottom: 12),
+      const SizedBox(height: 16),
+      heading('Collection destinations'),
+      for (final w in WasteType.values) info(w.icon, w.destination,
+        '${jobs.where((j) => j.type == w && j.stage.index >= JobStage.atHub.index).length} load(s) received'),
+      const SizedBox(height: 15), heading('Active dispatch queue'),
+      if (jobs.isEmpty) empty('No requests', 'Create a pickup from the Home tab.'),
+      for (final j in jobs) Card(margin: const EdgeInsets.only(bottom: 13),
         child: Padding(padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Expanded(child: Text('${p.id} • ${p.material}',
-                style: const TextStyle(fontWeight: FontWeight.w800))),
-              Text('${p.amount.toStringAsFixed(1)} kg',
-                style: const TextStyle(color: Colors.black54))]),
-            const SizedBox(height: 7),
-            Text('Status: ${p.rejected ? 'Flagged' : stageName(p.stage)}',
-              style: const TextStyle(color: forest)),
-            Text('Delivery: ${p.destination}',
-              style: const TextStyle(fontSize: 12, color: Colors.black54)),
-            if (p.type == WasteKind.recycle && p.stage == PickupStage.collecting && !p.verified) ...[
-              const SizedBox(height: 11),
-              const Text('Simulated waste recognition (not actual camera AI)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 7),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                OutlinedButton.icon(onPressed: () => verify(p, true),
-                  icon: const Icon(Icons.verified_outlined),
-                  label: const Text('Accept as recyclable')),
-                OutlinedButton.icon(onPressed: () => verify(p, false),
+            Text('${j.id} • ${j.type.title}',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+            const SizedBox(height: 6),
+            Text('${j.material} • ${j.kg.toStringAsFixed(1)} kg (estimated)'),
+            Text('Stage: ${stageText(j.stage)}'),
+            Text('Hub: ${j.type.destination}', style: const TextStyle(fontSize: 12)),
+            if (j.stage == JobStage.collected) ...[
+              const SizedBox(height: 12),
+              const Text('SIMULATED CAMERA CHECK', style: TextStyle(
+                fontWeight: FontWeight.w800, fontSize: 11, color: deep)),
+              const Text('Judge can accept a valid load or flag contamination. Not a real AI model.',
+                style: TextStyle(color: Colors.black54, fontSize: 11)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 7, runSpacing: 7, children: [
+                OutlinedButton.icon(onPressed: () => inspect(j, true),
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('Accept material')),
+                OutlinedButton.icon(onPressed: () => inspect(j, false),
                   icon: const Icon(Icons.warning_amber_outlined),
                   label: const Text('Flag contamination')),
               ]),
+              if (j.scanned) Text(j.approved ? 'Material accepted' :
+                'Contamination flagged — correct before dispatch',
+                style: TextStyle(color: j.approved ? green : Colors.red,
+                  fontWeight: FontWeight.w600)),
             ],
-            if (p.type == WasteKind.recycle && p.stage == PickupStage.atHub &&
-                !p.rejected) ...[
+            if (j.type == WasteType.recycling && j.stage == JobStage.atHub) ...[
               const SizedBox(height: 11),
-              Text(p.verifiedKg == null
-                ? 'Recycling hub: verify accepted weight (demo uses estimated ${p.amount.toStringAsFixed(1)} kg)'
-                : 'Hub-approved weight: ${p.verifiedKg!.toStringAsFixed(1)} kg · ${p.points} points',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-              if (p.verifiedKg == null)
-                OutlinedButton.icon(onPressed: () => confirmHubWeight(p),
-                  icon: const Icon(Icons.scale_outlined), label: const Text('Confirm hub weight')),
+              Text(j.verifiedKg > 0
+                ? 'Confirmed: ${j.verifiedKg.toStringAsFixed(1)} kg • ${j.points} points'
+                : 'Hub staff must verify weight before awarding points.'),
+              const SizedBox(height: 6),
+              OutlinedButton.icon(onPressed: j.verifiedKg > 0 ? null : () => confirmWeight(j),
+                icon: const Icon(Icons.scale_outlined),
+                label: const Text('Confirm demo weight')),
             ],
-            if (p.rejected) ...[
-              const SizedBox(height: 8),
-              OutlinedButton(onPressed: () => setState(() {
-                p.rejected = false; p.verified = false;
-              }), child: const Text('Reset verification')),
-            ],
-            if (!p.rejected && p.stage != PickupStage.completed) ...[
-              const SizedBox(height: 10),
-              SizedBox(width: double.infinity, child: FilledButton.icon(
-                onPressed: () => moveForward(p),
-                icon: const Icon(Icons.arrow_forward),
-                label: Text(p.stage == PickupStage.requested ? 'Assign township runner'
-                  : p.stage == PickupStage.assigned ? 'Start collection route'
-                  : p.stage == PickupStage.collecting ? 'Arrived at waste hub'
-                  : 'Complete delivery'))),
-            ],
+            if (j.stage == JobStage.completed) const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Delivered and closed', style: TextStyle(color: green,
+                fontWeight: FontWeight.bold))),
           ]))),
       const SizedBox(height: 10),
-      Container(padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: mint, borderRadius: BorderRadius.circular(15)),
-        child: const Text('MVP: operators supervise Autobin along township-approved sidewalks, with sorting at two central hubs. GPS/LiDAR navigation, real NFC, AI classification and automated unloading require hardware integration.',
-          style: TextStyle(fontSize: 12, color: dark))),
+      const Text('Presentation note: Human-operated buggies are the realistic initial rollout. Autonomous navigation and hardware controls are future-ready concepts. Organic collection is modeled as a separate trip to a composting hub.',
+        style: TextStyle(fontSize: 12, color: Colors.black54)),
     ]);
   }
 
-  Widget hubRow(IconData icon, String title, int count) => Row(children: [
-    Icon(icon, color: forest), const SizedBox(width: 12),
-    Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
-    Text('$count loads', style: const TextStyle(color: forest,
-      fontWeight: FontWeight.w700)),
-  ]);
-
-  Widget metricCard(String label, String value, IconData icon) => Container(
-    padding: const EdgeInsets.all(13),
+  Widget stat(String value, String label) => Container(padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: forest), const SizedBox(height: 8),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w900,
-        color: dark, fontSize: 23)),
-      Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-    ]));
+    child: Column(children: [Text(value, style: const TextStyle(fontSize: 24,
+      fontWeight: FontWeight.w900, color: deep)), Text(label, style:
+      const TextStyle(fontSize: 12, color: Colors.black54))]));
 
-  Widget infoTile(IconData icon, String title, String subtitle) => Card(
-    margin: const EdgeInsets.only(bottom: 9),
-    child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-      leading: Container(padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: mint, borderRadius: BorderRadius.circular(12)),
-        child: Icon(icon, color: forest)),
+  Widget heading(String text) => Text(text, style: const TextStyle(
+    fontSize: 19, fontWeight: FontWeight.w800, color: deep));
+
+  Widget info(IconData icon, String title, String body) => Card(
+    margin: const EdgeInsets.only(bottom: 8),
+    child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      leading: Container(padding: const EdgeInsets.all(9),
+        decoration: BoxDecoration(color: pale, borderRadius: BorderRadius.circular(12)),
+        child: Icon(icon, color: green)),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12))));
+      subtitle: Text(body, style: const TextStyle(fontSize: 12))));
 
-  Widget emptyState(IconData icon, String title, String subtitle) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 22),
+  Widget empty(String title, String subtitle) => Container(
+    width: double.infinity, padding: const EdgeInsets.all(30),
     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-    child: Column(children: [Icon(icon, size: 42, color: forest),
-      const SizedBox(height: 10),
-      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-      const SizedBox(height: 5),
+    child: Column(children: [const Icon(Icons.inbox_outlined, color: green, size: 37),
+      const SizedBox(height: 7), Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       Text(subtitle, textAlign: TextAlign.center,
         style: const TextStyle(color: Colors.black54))]));
+}
+
+class RobotMetric extends StatelessWidget {
+  const RobotMetric(this.label, this.value, this.icon, {super.key});
+  final String label;
+  final String value;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    Icon(icon, color: Colors.white70, size: 21),
+    Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+    Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+  ]);
 }
